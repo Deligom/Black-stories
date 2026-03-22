@@ -359,6 +359,36 @@
       <div class="text-xs mt-1" style="color: var(--text-muted);">Google Generative AI · Gerçek zamanlı hakemllik</div>
     </div>
 
+    <!-- TTS Settings -->
+    <div class="mb-5">
+      <label class="text-xs tracking-widest mb-2 block" style="color: var(--text-muted);">SES MODU</label>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="voice-aoede" onclick="tts.setVoice('Aoede')"
+          class="btn-ghost px-3 py-2 rounded text-xs text-left">
+          <div class="font-display" style="color:var(--accent);">Aoede</div>
+          <div style="color:var(--text-muted);font-size:10px;">Doğal · Kadın</div>
+        </button>
+        <button id="voice-charon" onclick="tts.setVoice('Charon')"
+          class="btn-ghost px-3 py-2 rounded text-xs text-left">
+          <div class="font-display" style="color:var(--accent);">Charon</div>
+          <div style="color:var(--text-muted);font-size:10px;">Derin · Erkek</div>
+        </button>
+        <button id="voice-kore" onclick="tts.setVoice('Kore')"
+          class="btn-ghost px-3 py-2 rounded text-xs text-left">
+          <div class="font-display" style="color:var(--accent);">Kore</div>
+          <div style="color:var(--text-muted);font-size:10px;">Sert · Kadın</div>
+        </button>
+        <button id="voice-fenrir" onclick="tts.setVoice('Fenrir')"
+          class="btn-ghost px-3 py-2 rounded text-xs text-left">
+          <div class="font-display" style="color:var(--accent);">Fenrir</div>
+          <div style="color:var(--text-muted);font-size:10px;">Gizemli · Erkek</div>
+        </button>
+      </div>
+      <div class="mt-2 text-xs" style="color: var(--text-muted);">Gemini API anahtarı gerektirir. Yoksa tarayıcı sesi kullanılır.</div>
+    </div>
+
+    <hr class="deco-line my-4">
+
     <!-- API Key input -->
     <div class="mb-4">
       <label class="text-xs tracking-widest mb-2 block" style="color: var(--text-muted);">GOOGLE AI API ANAHTARI</label>
@@ -873,6 +903,7 @@ function openSettings() {
   document.getElementById('settings-apikey').value = key;
   document.getElementById('api-status').style.display = 'none';
   document.getElementById('modal-settings').style.display = 'flex';
+  tts.updateVoiceButtons();
 }
 
 function closeSettings() {
@@ -1625,19 +1656,27 @@ function showToast(msg) {
 }
 
 // ═══════════════════════════════════════════════
-// TEXT TO SPEECH — Google Translate TTS (Neural)
-// Web Speech API fallback
+// TEXT TO SPEECH — Gemini TTS (Neural, same API key)
+// Falls back to Web Speech API if no key
 // ═══════════════════════════════════════════════
 const tts = {
   enabled: localStorage.getItem('bs_tts') !== 'false',
   synth: window.speechSynthesis,
   voice: null,
-  currentAudio: null,
-  audioQueue: [],
+  audioCtx: null,
+  currentSource: null,
+  queue: [],
   isPlaying: false,
+  // Gemini TTS model — Aoede is natural & expressive, works great in Turkish
+  TTS_MODEL: 'gemini-2.0-flash-exp',
+  VOICE_NAME: 'Aoede',
 
   init() {
-    // Preload Web Speech voices as fallback
+    // Load saved voice preference
+    const savedVoice = localStorage.getItem('bs_tts_voice');
+    if (savedVoice) this.VOICE_NAME = savedVoice;
+
+    // Init Web Speech voices as fallback
     if (this.synth) {
       const loadVoices = () => {
         const voices = this.synth.getVoices();
@@ -1650,57 +1689,83 @@ const tts = {
       this.synth.addEventListener('voiceschanged', loadVoices);
     }
     this.updateBtn();
+    // Update voice selection UI (deferred so DOM is ready)
+    setTimeout(() => this.updateVoiceButtons(), 100);
   },
 
-  // Split text into ≤200 char chunks at sentence boundaries
-  _chunk(text) {
-    const MAX = 190;
-    if (text.length <= MAX) return [text];
-    const chunks = [];
-    // Split on sentence-ending punctuation
-    const sentences = text.match(/[^.!?،]+[.!?،]*/g) || [text];
-    let buf = '';
-    for (const s of sentences) {
-      if ((buf + s).length <= MAX) {
-        buf += s;
-      } else {
-        if (buf) chunks.push(buf.trim());
-        // If single sentence longer than MAX, split on comma/space
-        if (s.length > MAX) {
-          const words = s.split(' ');
-          buf = '';
-          for (const w of words) {
-            if ((buf + ' ' + w).length <= MAX) buf += (buf ? ' ' : '') + w;
-            else { if (buf) chunks.push(buf.trim()); buf = w; }
-          }
-        } else {
-          buf = s;
-        }
-      }
+  _getAudioCtx() {
+    if (!this.audioCtx || this.audioCtx.state === 'closed') {
+      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    if (buf.trim()) chunks.push(buf.trim());
-    return chunks.filter(c => c.length > 0);
+    // Resume if suspended (autoplay policy)
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+    return this.audioCtx;
   },
 
-  async _playChunk(text) {
+  // Decode base64 PCM LINEAR16 24kHz mono → AudioBuffer → play
+  async _playPCM(base64Data) {
     return new Promise((resolve) => {
-      const url = 'https://translate.google.com/translate_tts?ie=UTF-8&tl=tr&client=tw-ob&q=' +
-                  encodeURIComponent(text);
-      const audio = new Audio(url);
-      audio.volume = 1;
-      this.currentAudio = audio;
-      audio.onended = resolve;
-      audio.onerror = () => {
-        // Google TTS failed — fall back to Web Speech for this chunk
-        this._speakWebSpeech(text).then(resolve);
-      };
-      audio.play().catch(() => {
-        this._speakWebSpeech(text).then(resolve);
-      });
+      try {
+        const ctx = this._getAudioCtx();
+        const raw = atob(base64Data);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+
+        // PCM LINEAR16 = 16-bit signed little-endian samples at 24kHz
+        const samples = bytes.length / 2;
+        const audioBuffer = ctx.createBuffer(1, samples, 24000);
+        const channel = audioBuffer.getChannelData(0);
+        const dv = new DataView(bytes.buffer);
+        for (let i = 0; i < samples; i++) {
+          channel[i] = dv.getInt16(i * 2, true) / 32768;
+        }
+
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        this.currentSource = source;
+        source.onended = resolve;
+        source.start(0);
+      } catch(e) {
+        console.warn('PCM decode error', e);
+        resolve();
+      }
     });
   },
 
-  _speakWebSpeech(text) {
+  async _geminiTTS(text) {
+    const apiKey = getApiKey();
+    if (!apiKey) return false;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.TTS_MODEL}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text }] }],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: this.VOICE_NAME }
+              }
+            }
+          }
+        })
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      const audioData = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!audioData) return false;
+      await this._playPCM(audioData);
+      return true;
+    } catch(e) {
+      console.warn('Gemini TTS error:', e);
+      return false;
+    }
+  },
+
+  _webSpeech(text) {
     return new Promise((resolve) => {
       if (!this.synth) { resolve(); return; }
       this.synth.cancel();
@@ -1718,34 +1783,52 @@ const tts = {
 
   async speak(text) {
     if (!this.enabled) return;
-    // Clean emojis and symbols
     const clean = text.replace(/[🔥❄️🌡🏆💀🖤🚫⚠️░▶✦★☠✅🔒💡]/gu, '')
                       .replace(/\s+/g, ' ').trim();
     if (!clean) return;
-
     this.stop();
     this.isPlaying = true;
-    const chunks = this._chunk(clean);
-    for (const chunk of chunks) {
-      if (!this.isPlaying) break;
-      await this._playChunk(chunk);
-    }
+
+    // Try Gemini TTS first, fallback to Web Speech
+    const ok = await this._geminiTTS(clean);
+    if (!ok && this.isPlaying) await this._webSpeech(clean);
+
     this.isPlaying = false;
   },
 
   stop() {
     this.isPlaying = false;
-    if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.src = '';
-      this.currentAudio = null;
+    if (this.currentSource) {
+      try { this.currentSource.stop(); } catch(e) {}
+      this.currentSource = null;
     }
     if (this.synth) this.synth.cancel();
   },
 
-  // For voiceCtrl TTS-speaking check
   isSpeaking() {
     return this.isPlaying || (this.synth && this.synth.speaking);
+  },
+
+  setVoice(name) {
+    this.VOICE_NAME = name;
+    localStorage.setItem('bs_tts_voice', name);
+    this.updateVoiceButtons();
+    // Quick preview
+    this.speak('Merhaba, ben hazırım.');
+  },
+
+  updateVoiceButtons() {
+    ['Aoede','Charon','Kore','Fenrir'].forEach(v => {
+      const btn = document.getElementById('voice-' + v.toLowerCase());
+      if (!btn) return;
+      if (v === this.VOICE_NAME) {
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.background = 'rgba(200,169,110,0.08)';
+      } else {
+        btn.style.borderColor = '';
+        btn.style.background = '';
+      }
+    });
   },
 
   toggle() {
