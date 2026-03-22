@@ -830,6 +830,7 @@ let gameState = {
   hintsUsed: [],
   hintsLeft: 3,
   hotKeywordsHit: new Set(),
+  geminiHotCount: 0,
   progress: 0,
   solved: {},
   isWaiting: false,
@@ -1025,6 +1026,7 @@ function startGame(story) {
   gameState.hintsUsed = [];
   gameState.hintsLeft = 3;
   gameState.hotKeywordsHit = new Set();
+  gameState.geminiHotCount = 0;
   gameState.progress = 0;
   gameState.isWaiting = false;
 
@@ -1201,29 +1203,29 @@ SOLVED|Evet! 🏆 Tam isabettin! Gizemı çözdün!`;
 
       if (tagClean === 'SOLVED') {
         addSystemMessage(text || raw, 'hot');
-        updateProgress(true);
+        updateProgress(true, true);
         gameState.isWaiting = false;
         document.getElementById('ask-btn').disabled = false;
         setTimeout(() => triggerVictory(true), 1200);
         return;
       } else if (tagClean === 'INVALID') {
-        // Don't count as a real question
         gameState.questionCount--;
         document.getElementById('q-count').textContent = gameState.questionCount;
         addSystemMessage(text || raw, 'invalid');
       } else if (tagClean === 'HOT') {
         type = 'hot';
-        gameState.hotKeywordsHit.add('gemini_hot_' + gameState.questionCount);
+        gameState.geminiHotCount++;
       } else if (tagClean === 'COLD') {
         type = 'cold';
       } else {
+        // PARTIAL
         type = 'neutral';
-        gameState.hotKeywordsHit.add('gemini_partial_' + gameState.questionCount);
+        gameState.geminiHotCount += 0.5; // partial = half hit
       }
     }
 
     addSystemMessage(text || raw, type);
-    updateProgress(type === 'hot');
+    updateProgress(type === 'hot', true);
 
   } catch(e) {
     removeTypingIndicator();
@@ -1238,7 +1240,7 @@ SOLVED|Evet! 🏆 Tam isabettin! Gizemı çözdün!`;
   // Auto-resume mic after TTS finishes speaking (only in always-on mode)
   if (voiceCtrl.supported && voiceCtrl.mode === 'always-on') {
     const waitForTTS = () => {
-      if (tts.synth && tts.synth.speaking) {
+      if (tts.isSpeaking()) {
         setTimeout(waitForTTS, 300);
       } else {
         voiceCtrl.resumeAfterAnswer();
@@ -1341,11 +1343,19 @@ function keywordAnalyze(q, story) {
   return { text, type, isHot };
 }
 
-function updateProgress(isHot) {
+function updateProgress(isHot, isGeminiMode = false) {
   const story = gameState.currentStory;
-  const totalKeywords = story.anahtarKelimeler.length;
-  const hitCount = gameState.hotKeywordsHit.size;
-  const pct = Math.min(Math.round((hitCount / totalKeywords) * 100), 95);
+  let pct;
+
+  if (isGeminiMode) {
+    // Gemini mode: each HOT adds ~8%, PARTIAL adds ~4%, cap at 90%
+    pct = Math.min(Math.round(gameState.geminiHotCount * 8), 90);
+  } else {
+    // Keyword mode: ratio of matched keywords
+    const totalKeywords = story.anahtarKelimeler.length;
+    const hitCount = gameState.hotKeywordsHit.size;
+    pct = Math.min(Math.round((hitCount / totalKeywords) * 100), 95);
+  }
 
   gameState.progress = pct;
   document.getElementById('progress-bar').style.width = pct + '%';
@@ -1615,46 +1625,127 @@ function showToast(msg) {
 }
 
 // ═══════════════════════════════════════════════
-// TEXT TO SPEECH
+// TEXT TO SPEECH — Google Translate TTS (Neural)
+// Web Speech API fallback
 // ═══════════════════════════════════════════════
 const tts = {
-  enabled: localStorage.getItem('bs_tts') !== 'false', // default ON
+  enabled: localStorage.getItem('bs_tts') !== 'false',
   synth: window.speechSynthesis,
   voice: null,
+  currentAudio: null,
+  audioQueue: [],
+  isPlaying: false,
 
   init() {
-    if (!this.synth) return;
-    const loadVoices = () => {
-      const voices = this.synth.getVoices();
-      // Prefer local Turkish voice (Google TTS on Android is best)
-      this.voice = voices.find(v => v.lang === 'tr-TR' && v.localService) ||
-                   voices.find(v => v.lang === 'tr-TR') ||
-                   voices.find(v => v.lang.startsWith('tr')) ||
-                   voices[0] || null;
-    };
-    loadVoices();
-    this.synth.addEventListener('voiceschanged', loadVoices);
+    // Preload Web Speech voices as fallback
+    if (this.synth) {
+      const loadVoices = () => {
+        const voices = this.synth.getVoices();
+        this.voice = voices.find(v => v.lang === 'tr-TR' && v.localService) ||
+                     voices.find(v => v.lang === 'tr-TR') ||
+                     voices.find(v => v.lang.startsWith('tr')) ||
+                     voices[0] || null;
+      };
+      loadVoices();
+      this.synth.addEventListener('voiceschanged', loadVoices);
+    }
     this.updateBtn();
   },
 
-  speak(text) {
-    if (!this.enabled || !this.synth) return;
-    // Strip emojis and special chars for cleaner speech
+  // Split text into ≤200 char chunks at sentence boundaries
+  _chunk(text) {
+    const MAX = 190;
+    if (text.length <= MAX) return [text];
+    const chunks = [];
+    // Split on sentence-ending punctuation
+    const sentences = text.match(/[^.!?،]+[.!?،]*/g) || [text];
+    let buf = '';
+    for (const s of sentences) {
+      if ((buf + s).length <= MAX) {
+        buf += s;
+      } else {
+        if (buf) chunks.push(buf.trim());
+        // If single sentence longer than MAX, split on comma/space
+        if (s.length > MAX) {
+          const words = s.split(' ');
+          buf = '';
+          for (const w of words) {
+            if ((buf + ' ' + w).length <= MAX) buf += (buf ? ' ' : '') + w;
+            else { if (buf) chunks.push(buf.trim()); buf = w; }
+          }
+        } else {
+          buf = s;
+        }
+      }
+    }
+    if (buf.trim()) chunks.push(buf.trim());
+    return chunks.filter(c => c.length > 0);
+  },
+
+  async _playChunk(text) {
+    return new Promise((resolve) => {
+      const url = 'https://translate.google.com/translate_tts?ie=UTF-8&tl=tr&client=tw-ob&q=' +
+                  encodeURIComponent(text);
+      const audio = new Audio(url);
+      audio.volume = 1;
+      this.currentAudio = audio;
+      audio.onended = resolve;
+      audio.onerror = () => {
+        // Google TTS failed — fall back to Web Speech for this chunk
+        this._speakWebSpeech(text).then(resolve);
+      };
+      audio.play().catch(() => {
+        this._speakWebSpeech(text).then(resolve);
+      });
+    });
+  },
+
+  _speakWebSpeech(text) {
+    return new Promise((resolve) => {
+      if (!this.synth) { resolve(); return; }
+      this.synth.cancel();
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.lang = 'tr-TR';
+      utt.rate = 0.88;
+      utt.pitch = 0.9;
+      utt.volume = 1;
+      if (this.voice) utt.voice = this.voice;
+      utt.onend = resolve;
+      utt.onerror = resolve;
+      this.synth.speak(utt);
+    });
+  },
+
+  async speak(text) {
+    if (!this.enabled) return;
+    // Clean emojis and symbols
     const clean = text.replace(/[🔥❄️🌡🏆💀🖤🚫⚠️░▶✦★☠✅🔒💡]/gu, '')
                       .replace(/\s+/g, ' ').trim();
     if (!clean) return;
-    this.synth.cancel();
-    const utt = new SpeechSynthesisUtterance(clean);
-    utt.lang = 'tr-TR';
-    utt.rate = 0.88;
-    utt.pitch = 0.9;
-    utt.volume = 1;
-    if (this.voice) utt.voice = this.voice;
-    this.synth.speak(utt);
+
+    this.stop();
+    this.isPlaying = true;
+    const chunks = this._chunk(clean);
+    for (const chunk of chunks) {
+      if (!this.isPlaying) break;
+      await this._playChunk(chunk);
+    }
+    this.isPlaying = false;
   },
 
   stop() {
+    this.isPlaying = false;
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio.src = '';
+      this.currentAudio = null;
+    }
     if (this.synth) this.synth.cancel();
+  },
+
+  // For voiceCtrl TTS-speaking check
+  isSpeaking() {
+    return this.isPlaying || (this.synth && this.synth.speaking);
   },
 
   toggle() {
@@ -1911,9 +2002,8 @@ const voiceCtrl = {
 
   resumeAfterAnswer() {
     if (!this.supported || this.mode === 'off') return;
-    // TTS bittikten sonra yeniden aç
     const check = () => {
-      if (tts.synth && tts.synth.speaking) {
+      if (tts.isSpeaking()) {
         setTimeout(check, 300);
       } else if (!gameState.isWaiting) {
         this.start();
@@ -1972,6 +2062,7 @@ document.addEventListener('DOMContentLoaded', () => {
       askQuestion();
     }
   });
+  window.addEventListener('beforeunload', saveProgress);
   tts.init();
   voiceCtrl.init();
   renderHome();
