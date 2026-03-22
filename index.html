@@ -385,6 +385,10 @@
         </button>
       </div>
       <div class="mt-2 text-xs" style="color: var(--text-muted);">Gemini API anahtarı gerektirir. Yoksa tarayıcı sesi kullanılır.</div>
+      <button onclick="tts.testAndReport()" class="btn-ghost w-full mt-3 px-3 py-2 rounded text-xs tracking-wide">
+        🔬 SES API'Sİ TEST ET
+      </button>
+      <div id="tts-test-result" class="mt-2 text-xs px-3 py-2 rounded" style="display:none; background:var(--surface2); border:1px solid var(--border); color:var(--text-secondary); word-break:break-all; line-height:1.6;"></div>
     </div>
 
     <hr class="deco-line my-4">
@@ -1656,8 +1660,7 @@ function showToast(msg) {
 }
 
 // ═══════════════════════════════════════════════
-// TEXT TO SPEECH — Gemini TTS (Neural, same API key)
-// Falls back to Web Speech API if no key
+// TEXT TO SPEECH — Gemini TTS + Fallback
 // ═══════════════════════════════════════════════
 const tts = {
   enabled: localStorage.getItem('bs_tts') !== 'false',
@@ -1665,31 +1668,34 @@ const tts = {
   voice: null,
   audioCtx: null,
   currentSource: null,
-  queue: [],
   isPlaying: false,
-  // Gemini TTS model — Aoede is natural & expressive, works great in Turkish
-  TTS_MODEL: 'gemini-2.0-flash-exp',
+  _playId: 0,          // her speak() için unique ID — race condition önler
+  _abortCtrl: null,    // fetch iptal için AbortController
+
+  TTS_MODEL: 'gemini-2.5-flash-preview-tts',
   VOICE_NAME: 'Aoede',
+  lastTTSError: null,
 
   init() {
-    // Load saved voice preference
     const savedVoice = localStorage.getItem('bs_tts_voice');
     if (savedVoice) this.VOICE_NAME = savedVoice;
 
-    // Init Web Speech voices as fallback
     if (this.synth) {
       const loadVoices = () => {
         const voices = this.synth.getVoices();
-        this.voice = voices.find(v => v.lang === 'tr-TR' && v.localService) ||
-                     voices.find(v => v.lang === 'tr-TR') ||
-                     voices.find(v => v.lang.startsWith('tr')) ||
-                     voices[0] || null;
+        // "Google Türkçe" = neural ağ sesi, localService=FALSE
+        // localService=TRUE = robotik yerel ses, kaçın
+        this.voice =
+          voices.find(v => v.lang.startsWith('tr') && v.name.toLowerCase().includes('google')) ||
+          voices.find(v => v.lang === 'tr-TR' && !v.localService) ||
+          voices.find(v => v.lang === 'tr-TR') ||
+          voices.find(v => v.lang.startsWith('tr')) ||
+          null;
       };
       loadVoices();
       this.synth.addEventListener('voiceschanged', loadVoices);
     }
     this.updateBtn();
-    // Update voice selection UI (deferred so DOM is ready)
     setTimeout(() => this.updateVoiceButtons(), 100);
   },
 
@@ -1697,21 +1703,19 @@ const tts = {
     if (!this.audioCtx || this.audioCtx.state === 'closed') {
       this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    // Resume if suspended (autoplay policy)
     if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
     return this.audioCtx;
   },
 
-  // Decode base64 PCM LINEAR16 24kHz mono → AudioBuffer → play
-  async _playPCM(base64Data) {
+  async _playPCM(base64Data, playId) {
+    // Oynatmadan önce hâlâ biz miyiz kontrol et
+    if (this._playId !== playId) return;
     return new Promise((resolve) => {
       try {
         const ctx = this._getAudioCtx();
         const raw = atob(base64Data);
         const bytes = new Uint8Array(raw.length);
         for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-
-        // PCM LINEAR16 = 16-bit signed little-endian samples at 24kHz
         const samples = bytes.length / 2;
         const audioBuffer = ctx.createBuffer(1, samples, 24000);
         const channel = audioBuffer.getChannelData(0);
@@ -1719,7 +1723,6 @@ const tts = {
         for (let i = 0; i < samples; i++) {
           channel[i] = dv.getInt16(i * 2, true) / 32768;
         }
-
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
@@ -1733,16 +1736,21 @@ const tts = {
     });
   },
 
-  async _geminiTTS(text) {
+  async _geminiTTS(text, playId) {
     const apiKey = getApiKey();
     if (!apiKey) return false;
+
+    // Her yeni istek için yeni AbortController
+    this._abortCtrl = new AbortController();
+
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.TTS_MODEL}:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
         method: 'POST',
+        signal: this._abortCtrl.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text }] }],
+          contents: [{ role: 'user', parts: [{ text: `Türkçe olarak söyle: ${text}` }] }],
           generationConfig: {
             responseModalities: ['AUDIO'],
             speechConfig: {
@@ -1753,21 +1761,49 @@ const tts = {
           }
         })
       });
-      if (!res.ok) return false;
+
+      // Fetch tamamlandı ama biz iptal edildik mi?
+      if (this._playId !== playId) return false;
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const msg = err?.error?.message || `HTTP ${res.status}`;
+        console.warn('Gemini TTS error:', res.status, msg);
+        this.lastTTSError = `${res.status}: ${msg}`;
+        // Rate limit veya billing hatası ise kullanıcıya bildir
+        if (res.status === 429) {
+          showToast('🔇 Gemini TTS: Kota aşıldı (429) → cihaz sesine geçildi');
+        } else if (res.status === 400 || res.status === 403) {
+          showToast(`🔇 Gemini TTS hata ${res.status} → cihaz sesine geçildi`);
+        }
+        return false;
+      }
       const data = await res.json();
-      const audioData = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (!audioData) return false;
-      await this._playPCM(audioData);
+      if (this._playId !== playId) return false;
+
+      const inlineData = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+      if (!inlineData?.data) {
+        const snippet = JSON.stringify(data).slice(0, 200);
+        console.warn('Gemini TTS: ses verisi boş — fallback. Yanıt:', snippet);
+        this.lastTTSError = `Ses verisi boş: ${snippet}`;
+        showToast('🔇 Gemini TTS ses verisi yok → cihaz sesine geçildi');
+        return false;
+      }
+
+      console.log('Gemini TTS OK — voice:', this.VOICE_NAME, '| mime:', inlineData.mimeType);
+      await this._playPCM(inlineData.data, playId);
       return true;
+
     } catch(e) {
-      console.warn('Gemini TTS error:', e);
+      if (e.name === 'AbortError') return false; // biz iptal ettik, normal
+      console.warn('Gemini TTS fetch error:', e.message);
       return false;
     }
   },
 
-  _webSpeech(text) {
+  _webSpeech(text, playId) {
     return new Promise((resolve) => {
-      if (!this.synth) { resolve(); return; }
+      if (!this.synth || this._playId !== playId) { resolve(); return; }
       this.synth.cancel();
       const utt = new SpeechSynthesisUtterance(text);
       utt.lang = 'tr-TR';
@@ -1786,18 +1822,29 @@ const tts = {
     const clean = text.replace(/[🔥❄️🌡🏆💀🖤🚫⚠️░▶✦★☠✅🔒💡]/gu, '')
                       .replace(/\s+/g, ' ').trim();
     if (!clean) return;
+
+    // Önceki her şeyi durdur, yeni ID al
     this.stop();
+    const myId = ++this._playId;
     this.isPlaying = true;
 
-    // Try Gemini TTS first, fallback to Web Speech
-    const ok = await this._geminiTTS(clean);
-    if (!ok && this.isPlaying) await this._webSpeech(clean);
+    const ok = await this._geminiTTS(clean, myId);
 
-    this.isPlaying = false;
+    // Hâlâ biz miyiz ve Gemini başarısız olduysa Web Speech dene
+    if (this._playId === myId && !ok) {
+      await this._webSpeech(clean, myId);
+    }
+
+    if (this._playId === myId) this.isPlaying = false;
   },
 
   stop() {
+    // playId artır → devam eden tüm async'ler kendi check'lerinde kendini keser
+    this._playId++;
     this.isPlaying = false;
+    // Fetch'i iptal et
+    if (this._abortCtrl) { this._abortCtrl.abort(); this._abortCtrl = null; }
+    // AudioContext source'u durdur
     if (this.currentSource) {
       try { this.currentSource.stop(); } catch(e) {}
       this.currentSource = null;
@@ -1806,15 +1853,71 @@ const tts = {
   },
 
   isSpeaking() {
-    return this.isPlaying || (this.synth && this.synth.speaking);
+    return this.isPlaying || (!!this.synth && this.synth.speaking);
   },
 
   setVoice(name) {
+    this.stop();
     this.VOICE_NAME = name;
     localStorage.setItem('bs_tts_voice', name);
     this.updateVoiceButtons();
-    // Quick preview
-    this.speak('Merhaba, ben hazırım.');
+    this.speak('Hazırım.');
+  },
+
+  async testAndReport() {
+    const el = document.getElementById('tts-test-result');
+    if (!el) return;
+    el.style.display = 'block';
+    el.textContent = '⏳ Test ediliyor...';
+    el.style.color = 'var(--text-secondary)';
+
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      el.textContent = '❌ API anahtarı girilmemiş. Lütfen önce kaydedin.';
+      el.style.color = 'var(--red-bright)';
+      return;
+    }
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.TTS_MODEL}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Merhaba.' }] }],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: this.VOICE_NAME } } }
+          }
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data?.error?.message || 'Bilinmeyen hata';
+        const code = res.status;
+        let diagnosis = '';
+        if (code === 429) diagnosis = '→ Kota aşıldı! Free tier günlük/dakika limiti dolmuş. Yarın tekrar dene veya billing aç.';
+        else if (code === 400) diagnosis = '→ Billing kapalı olabilir veya TTS bu hesapta aktif değil.';
+        else if (code === 403) diagnosis = '→ API anahtarının TTS iznin yok veya hesap kısıtlı.';
+        else if (code === 404) diagnosis = '→ Model adı geçersiz veya bu bölgede erişilemiyor.';
+        el.innerHTML = `❌ HTTP ${code}<br><span style="color:var(--red-bright)">${msg}</span><br><br><span style="color:var(--accent)">${diagnosis}</span>`;
+        el.style.color = 'var(--text-secondary)';
+      } else {
+        const hasAudio = !!data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (hasAudio) {
+          el.textContent = `✅ Gemini TTS çalışıyor! Model: ${this.TTS_MODEL} | Ses: ${this.VOICE_NAME}`;
+          el.style.color = 'var(--green-bright)';
+          this.speak('Merhaba, ses testi başarılı.');
+        } else {
+          el.innerHTML = `⚠️ API yanıt verdi ama ses verisi yok.<br><span style="color:var(--accent-dim);">${JSON.stringify(data).slice(0,200)}</span>`;
+          el.style.color = 'var(--text-secondary)';
+        }
+      }
+    } catch(e) {
+      el.textContent = `❌ Fetch hatası: ${e.message}`;
+      el.style.color = 'var(--red-bright)';
+    }
   },
 
   updateVoiceButtons() {
