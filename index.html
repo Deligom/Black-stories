@@ -335,10 +335,11 @@
     70%  { box-shadow: 0 0 0 18px rgba(192,57,43,0); }
     100% { box-shadow: 0 0 0 0 rgba(192,57,43,0); }
   }
-  .mic-idle    { background: var(--surface) !important; border-color: var(--border-bright) !important; animation: none !important; }
-  .mic-ready   { background: rgba(200,169,110,0.1) !important; border-color: var(--accent) !important; animation: mic-pulse 1.8s infinite !important; }
-  .mic-active  { background: rgba(139,37,37,0.18) !important; border-color: var(--red-bright) !important; animation: mic-listening 1s infinite !important; }
-  .mic-waiting { background: rgba(74,107,138,0.12) !important; border-color: var(--cold) !important; animation: none !important; }
+  .mic-idle      { background: var(--surface) !important; border-color: var(--border-bright) !important; animation: none !important; }
+  .mic-ready     { background: rgba(200,169,110,0.1) !important; border-color: var(--accent) !important; animation: mic-pulse 1.8s infinite !important; }
+  .mic-active    { background: rgba(139,37,37,0.18) !important; border-color: var(--red-bright) !important; animation: mic-listening 1s infinite !important; }
+  .mic-always-on { background: rgba(139,37,37,0.28) !important; border-color: var(--red-bright) !important; animation: mic-listening 1.4s infinite !important; box-shadow: 0 0 0 4px rgba(192,57,43,0.15) !important; }
+  .mic-waiting   { background: rgba(74,107,138,0.12) !important; border-color: var(--cold) !important; animation: none !important; }
 </style>
 </head>
 <body>
@@ -534,13 +535,13 @@
       
       <!-- Big mic button (voice mode) -->
       <div class="flex items-center gap-3 mb-3">
-        <button id="mic-btn" onclick="voiceCtrl.toggle()" class="mic-idle flex items-center justify-center rounded-full transition-all duration-300 shrink-0"
+        <button id="mic-btn" class="mic-idle flex items-center justify-center rounded-full transition-all duration-300 shrink-0"
           style="width:60px; height:60px; font-size:26px; background: var(--surface); border: 2px solid var(--border-bright);">
           🎤
         </button>
         <div class="flex-1">
-          <div class="text-xs font-display tracking-wide mb-0.5" style="color: var(--text-secondary);" id="mic-label">Mikrofona bas, soruyu söyle</div>
-          <div class="text-xs" style="color: var(--text-muted);" id="mic-sublabel">2 sn sessizlik → otomatik gönder</div>
+          <div class="text-xs font-display tracking-wide mb-0.5" style="color: var(--text-secondary);" id="mic-label">Tek tık: bir cümle  ·  Çift tık: sürekli mod</div>
+          <div class="text-xs" style="color: var(--text-muted);" id="mic-sublabel">Tek tık: bir soru  ·  Çift tık: sürekli mod</div>
         </div>
         <button id="tts-btn" onclick="tts.toggle()" class="counter-badge px-2 py-2 rounded text-base shrink-0" title="Sesi aç/kapat" style="cursor:pointer;">🔊</button>
       </div>
@@ -593,7 +594,7 @@
       </div>
 
       <!-- Score summary -->
-      <div class="grid grid-cols-3 gap-3 mb-6">
+      <div class="grid grid-cols-4 gap-3 mb-6">
         <div class="stat-item p-4 rounded">
           <div class="font-display text-2xl" style="color: var(--accent);" id="sol-questions">0</div>
           <div class="text-xs mt-1" style="color: var(--text-muted);">Soru</div>
@@ -601,6 +602,10 @@
         <div class="stat-item p-4 rounded">
           <div class="font-display text-2xl" style="color: var(--accent);" id="sol-hints">0</div>
           <div class="text-xs mt-1" style="color: var(--text-muted);">İpucu</div>
+        </div>
+        <div class="stat-item p-4 rounded">
+          <div class="font-display text-xl" style="color: var(--cold);" id="sol-time">--:--</div>
+          <div class="text-xs mt-1" style="color: var(--text-muted);" id="sol-record"></div>
         </div>
         <div class="stat-item p-4 rounded">
           <div class="font-display text-2xl" style="color: var(--green-bright);" id="sol-score">-</div>
@@ -623,6 +628,33 @@
           SONRAKİ →
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: CLAIM VERIFICATION ==================== -->
+<div id="modal-claim" class="modal-overlay" style="display:none;">
+  <div class="modal-box p-8 rounded" style="max-width:480px;">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-display text-lg tracking-wide" style="color: var(--accent);">🏆 ÇÖZDÜM!</h3>
+      <button onclick="closeClaim()" class="btn-ghost px-3 py-1 rounded text-xs">✕</button>
+    </div>
+    <p class="text-sm mb-4" style="color: var(--text-secondary); line-height: 1.7;">
+      Çözümünü kendi cümlelerinle açıkla. Gemini doğru anlayıp anlamadığını kontrol edecek.
+    </p>
+    <textarea
+      id="claim-explanation"
+      class="question-input w-full px-3 py-2 text-sm rounded mb-3"
+      placeholder="Adam kör olduğu için tünelde panik yaptı ve..."
+      rows="4"
+      maxlength="500"
+    ></textarea>
+    <div id="claim-feedback" class="px-3 py-2 rounded text-sm mb-3" style="display:none; border: 1px solid; line-height:1.6;"></div>
+    <div class="flex gap-3">
+      <button class="btn-ghost flex-1 px-4 py-3 rounded text-sm" onclick="closeClaim()">İPTAL</button>
+      <button id="claim-submit-btn" class="btn-primary flex-1 px-4 py-3 rounded text-sm font-display" onclick="submitClaimVerification()">
+        GEMINI İLE DOĞRULA
+      </button>
     </div>
   </div>
 </div>
@@ -800,7 +832,9 @@ let gameState = {
   hotKeywordsHit: new Set(),
   progress: 0,
   solved: {},
-  isWaiting: false
+  isWaiting: false,
+  startTime: null,
+  elapsedSeconds: 0
 };
 
 // Load from localStorage
@@ -1019,6 +1053,8 @@ function startGame(story) {
   document.getElementById('hints-section').style.display = 'none';
   document.getElementById('hints-list').innerHTML = '';
   document.getElementById('question-input').value = '';
+  gameState.startTime = Date.now();
+  gameState.elapsedSeconds = 0;
 
   const hintBtn = document.getElementById('hint-btn');
   hintBtn.disabled = false;
@@ -1086,7 +1122,7 @@ function askQuestion() {
 
   const story = gameState.currentStory;
   input.value = '';
-  input.focus();
+  if (!voiceCtrl.active) input.focus();
 
   gameState.questionCount++;
   gameState.isWaiting = true;
@@ -1109,6 +1145,10 @@ function askQuestion() {
       updateProgress(answer.isHot);
       gameState.isWaiting = false;
       document.getElementById('ask-btn').disabled = false;
+      // Resume mic if in always-on mode
+      if (voiceCtrl.supported && voiceCtrl.mode === 'always-on') {
+        voiceCtrl.resumeAfterAnswer();
+      }
     }, 500 + Math.random() * 300);
   }
 }
@@ -1195,8 +1235,8 @@ SOLVED|Evet! 🏆 Tam isabettin! Gizemı çözdün!`;
   gameState.isWaiting = false;
   document.getElementById('ask-btn').disabled = false;
 
-  // Auto-resume mic after TTS finishes speaking
-  if (voiceCtrl.supported) {
+  // Auto-resume mic after TTS finishes speaking (only in always-on mode)
+  if (voiceCtrl.supported && voiceCtrl.mode === 'always-on') {
     const waitForTTS = () => {
       if (tts.synth && tts.synth.speaking) {
         setTimeout(waitForTTS, 300);
@@ -1208,16 +1248,50 @@ SOLVED|Evet! 🏆 Tam isabettin! Gizemı çözdün!`;
   }
 }
 
+// Turkish suffix-aware matching
+// Removes common suffixes to find the stem, then checks if stems overlap
+function turkishMatch(text, keyword) {
+  const t = text.toLowerCase();
+  const k = keyword.toLowerCase();
+  if (t.includes(k)) return true;
+  // Strip common Turkish suffixes (noun cases, plural, verb endings)
+  const suffixes = ['ların','lerin','ların','lara','lere','ları','leri','lar','ler',
+                    'ında','inde','unda','ünde','nda','nde','dan','den','tan','ten',
+                    'nın','nin','nun','nün','ın','in','un','ün','a','e','ı','i','u','ü',
+                    'da','de','ta','te','yı','yi','yu','yü','yla','yle',
+                    'mak','mek','yor','iyor','uyor','üyor','acak','ecek',
+                    'tı','ti','tu','tü','dı','di','du','dü','ık','ik','uk','ük','lık','lik'];
+  const stem = (word) => {
+    let w = word;
+    for (const s of suffixes) {
+      if (w.length > 4 && w.endsWith(s) && w.length - s.length >= 3) {
+        w = w.slice(0, w.length - s.length);
+        break;
+      }
+    }
+    return w;
+  };
+  const kStem = stem(k);
+  if (kStem.length >= 3 && t.includes(kStem)) return true;
+  // Check each word in text
+  const words = t.split(/\s+/);
+  for (const word of words) {
+    const wStem = stem(word);
+    if (wStem.length >= 3 && (kStem.startsWith(wStem) || wStem.startsWith(kStem))) return true;
+  }
+  return false;
+}
+
 function keywordAnalyze(q, story) {
   const qLower = q.toLowerCase();
 
-  // Check solution keywords match
-  const hitKeywords = story.anahtarKelimeler.filter(k => qLower.includes(k.toLowerCase()));
+  // Turkish-aware keyword matching
+  const hitKeywords = story.anahtarKelimeler.filter(k => turkishMatch(qLower, k));
   const isHot = hitKeywords.length > 0;
 
-  // Check for solution content (partial match)
+  // Check for solution content (partial match) — Turkish-aware
   const solWords = story.cozum.toLowerCase().split(/\s+/).filter(w => w.length > 4);
-  const solMatches = solWords.filter(w => qLower.includes(w));
+  const solMatches = solWords.filter(w => turkishMatch(qLower, w));
   const isBurning = solMatches.length >= 2;
 
   // Build response
@@ -1334,13 +1408,82 @@ function getHint() {
 // WIN CONDITIONS
 // ═══════════════════════════════════════════════
 function claimSolved() {
-  // Show a confirm: "Gerçekten çözdüğüne emin misin?"
-  document.getElementById('confirm-q-count').textContent = gameState.questionCount;
-  document.getElementById('confirm-claim-text').style.display = 'block';
-  document.getElementById('confirm-default-text').style.display = 'none';
-  document.getElementById('confirm-reveal-btn').textContent = '✓ EVET, ÇÖZDÜM';
-  document.getElementById('confirm-reveal-btn').onclick = () => triggerVictory(true);
-  document.getElementById('modal-confirm').style.display = 'flex';
+  const apiKey = getApiKey();
+  if (apiKey) {
+    // AI verification mode: ask user to explain
+    document.getElementById('claim-explanation').value = '';
+    document.getElementById('claim-feedback').style.display = 'none';
+    document.getElementById('claim-submit-btn').disabled = false;
+    document.getElementById('claim-submit-btn').textContent = 'GEMINI İLE DOĞRULA';
+    document.getElementById('modal-claim').style.display = 'flex';
+  } else {
+    // No API: fallback to original confirm modal
+    document.getElementById('confirm-q-count').textContent = gameState.questionCount;
+    document.getElementById('confirm-claim-text').style.display = 'block';
+    document.getElementById('confirm-default-text').style.display = 'none';
+    document.getElementById('confirm-reveal-btn').textContent = '✓ EVET, ÇÖZDÜM';
+    document.getElementById('confirm-reveal-btn').onclick = () => triggerVictory(true);
+    document.getElementById('modal-confirm').style.display = 'flex';
+  }
+}
+
+async function submitClaimVerification() {
+  const explanation = document.getElementById('claim-explanation').value.trim();
+  if (!explanation) { showToast('Çözümünü açıkla önce!'); return; }
+
+  const btn = document.getElementById('claim-submit-btn');
+  const feedbackEl = document.getElementById('claim-feedback');
+  btn.disabled = true;
+  btn.textContent = '⏳ Gemini doğruluyor...';
+  feedbackEl.style.display = 'none';
+
+  const story = gameState.currentStory;
+  const apiKey = getApiKey();
+  const systemPrompt = `Sen bir Black Stories bulmaca hakemisin.
+GERÇEK ÇÖZÜM: ${story.cozum}
+Oyuncunun açıklaması: "${explanation}"
+
+Oyuncu çözümün özünü doğru anladı mı? Ana olayı ve temel nedeni yakaladıysa DOĞRU say. Küçük eksikler sorun değil.
+Sadece şu formatta cevap ver:
+DOĞRU|Tebrikler mesajı (1 cümle Türkçe)
+YANLIŞ|Neyin eksik/yanlış olduğuna dair ufak ipucu (çözümü açıklama, sadece yön ver, 1 cümle)`;
+
+  try {
+    const raw = await callGemini(apiKey, explanation, systemPrompt);
+    const [tag, ...rest] = raw.split('|');
+    const msg = rest.join('|').trim();
+    if (tag.trim().toUpperCase() === 'DOĞRU') {
+      feedbackEl.style.background = 'rgba(45,90,45,0.2)';
+      feedbackEl.style.borderColor = 'var(--green-bright)';
+      feedbackEl.style.color = 'var(--green-bright)';
+      feedbackEl.textContent = '✓ ' + msg;
+      feedbackEl.style.display = 'block';
+      setTimeout(() => {
+        document.getElementById('modal-claim').style.display = 'none';
+        triggerVictory(true);
+      }, 1400);
+    } else {
+      feedbackEl.style.background = 'rgba(139,37,37,0.15)';
+      feedbackEl.style.borderColor = 'var(--red-bright)';
+      feedbackEl.style.color = 'var(--red-bright)';
+      feedbackEl.textContent = '✗ ' + msg;
+      feedbackEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'TEKRAR DENE';
+    }
+  } catch(e) {
+    feedbackEl.style.background = 'rgba(107,90,56,0.1)';
+    feedbackEl.style.borderColor = 'var(--accent-dim)';
+    feedbackEl.style.color = 'var(--accent-dim)';
+    feedbackEl.textContent = '⚠ API hatası. Kelime moduyla devam et.';
+    feedbackEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'TEKRAR DENE';
+  }
+}
+
+function closeClaim() {
+  document.getElementById('modal-claim').style.display = 'none';
 }
 
 function triggerVictory(playerSolved) {
@@ -1376,7 +1519,21 @@ function revealSolution() {
 
 function showSolution(playerSolved) {
   const story = gameState.currentStory;
-  const baseScore = playerSolved ? 100 : 40; // Pes edene penaltı
+
+  // Timer
+  const elapsed = gameState.startTime ? Math.round((Date.now() - gameState.startTime) / 1000) : 0;
+  gameState.elapsedSeconds = elapsed;
+  const mm = String(Math.floor(elapsed / 60)).padStart(2,'0');
+  const ss = String(elapsed % 60).padStart(2,'0');
+  const timeStr = `${mm}:${ss}`;
+
+  // Record
+  const recordKey = `bs_record_${story.id}`;
+  const prevRecord = parseInt(localStorage.getItem(recordKey) || '0');
+  const isNewRecord = playerSolved && elapsed > 0 && (prevRecord === 0 || elapsed < prevRecord);
+  if (isNewRecord) localStorage.setItem(recordKey, elapsed);
+
+  const baseScore = playerSolved ? 100 : 40;
   const qPenalty = Math.min(gameState.questionCount * 3, 60);
   const hintPenalty = gameState.hintCount * 10;
   const score = Math.max(0, baseScore - qPenalty - hintPenalty);
@@ -1423,6 +1580,19 @@ function showSolution(playerSolved) {
   document.getElementById('sol-score').textContent = playerSolved ? score : '—';
   document.getElementById('sol-rating').textContent = rating;
   document.getElementById('sol-comment').textContent = comment;
+  document.getElementById('sol-time').textContent = timeStr;
+  const recordEl = document.getElementById('sol-record');
+  if (isNewRecord) {
+    recordEl.textContent = '🏅 Yeni Rekor!';
+    recordEl.style.color = 'var(--accent)';
+  } else if (playerSolved && prevRecord > 0) {
+    const rm = String(Math.floor(prevRecord / 60)).padStart(2,'0');
+    const rs = String(prevRecord % 60).padStart(2,'0');
+    recordEl.textContent = `Rekor: ${rm}:${rs}`;
+    recordEl.style.color = 'var(--text-muted)';
+  } else {
+    recordEl.textContent = '';
+  }
 
   showScreen('screen-solution');
 }
@@ -1456,9 +1626,10 @@ const tts = {
     if (!this.synth) return;
     const loadVoices = () => {
       const voices = this.synth.getVoices();
-      // Prefer Turkish voice
-      this.voice = voices.find(v => v.lang.startsWith('tr')) ||
-                   voices.find(v => v.lang.startsWith('tr-TR')) ||
+      // Prefer local Turkish voice (Google TTS on Android is best)
+      this.voice = voices.find(v => v.lang === 'tr-TR' && v.localService) ||
+                   voices.find(v => v.lang === 'tr-TR') ||
+                   voices.find(v => v.lang.startsWith('tr')) ||
                    voices[0] || null;
     };
     loadVoices();
@@ -1475,8 +1646,8 @@ const tts = {
     this.synth.cancel();
     const utt = new SpeechSynthesisUtterance(clean);
     utt.lang = 'tr-TR';
-    utt.rate = 0.95;
-    utt.pitch = 0.85; // Slightly deeper, more mysterious
+    utt.rate = 0.88;
+    utt.pitch = 0.9;
     utt.volume = 1;
     if (this.voice) utt.voice = this.voice;
     this.synth.speak(utt);
@@ -1504,25 +1675,27 @@ const tts = {
 };
 
 // ═══════════════════════════════════════════════
-// VOICE CONTROLLER — Android Chrome Uyumlu
+// VOICE CONTROLLER — Dual Mode (One-shot / Always-On)
 // ═══════════════════════════════════════════════
 const voiceCtrl = {
   SR: window.SpeechRecognition || window.webkitSpeechRecognition,
   rec: null,
   active: false,
   running: false,
+  mode: 'off',          // 'off' | 'one-shot' | 'always-on'
   silenceTimer: null,
   SILENCE_MS: 2000,
   accumulated: '',
   supported: false,
   httpsRequired: false,
+  lastTapTime: 0,
+  TAP_DOUBLE_MS: 350,   // max ms between taps for double-tap detection
 
   init() {
     const btn = document.getElementById('mic-btn');
     const lbl = document.getElementById('mic-label');
     const sub = document.getElementById('mic-sublabel');
 
-    // HTTPS kontrolü — Chrome Android'de content:// veya file:// çalışmaz
     const isSecure = window.isSecureContext ||
                      location.protocol === 'https:' ||
                      location.hostname === 'localhost' ||
@@ -1548,26 +1721,76 @@ const voiceCtrl = {
     }
 
     this.supported = true;
+
+    // Tap handler: double-tap = always-on, single-tap = one-shot
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const now = Date.now();
+        const delta = now - this.lastTapTime;
+        this.lastTapTime = now;
+
+        if (delta < this.TAP_DOUBLE_MS && delta > 0) {
+          // Double tap
+          this._handleDoubleTap();
+        } else {
+          // Potential single tap — wait briefly to see if second tap arrives
+          setTimeout(() => {
+            if (Date.now() - this.lastTapTime >= this.TAP_DOUBLE_MS) {
+              this._handleSingleTap();
+            }
+          }, this.TAP_DOUBLE_MS);
+        }
+      });
+    }
+
     this._build();
   },
 
+  _handleSingleTap() {
+    if (!this.supported) return;
+    if (this.mode === 'always-on') {
+      // Turn off always-on
+      this.stop();
+    } else if (this.mode === 'off') {
+      // Start one-shot
+      this.mode = 'one-shot';
+      this.start();
+    } else if (this.mode === 'one-shot') {
+      // Toggle off one-shot
+      this.stop();
+    }
+  },
+
+  _handleDoubleTap() {
+    if (!this.supported) return;
+    if (this.mode === 'always-on') {
+      // Turn off
+      this.stop();
+    } else {
+      // Switch to always-on regardless of current mode
+      this.stop();
+      this.mode = 'always-on';
+      this.start();
+    }
+  },
+
   _showHttpsError() {
-    // Modal göster
     document.getElementById('modal-https').style.display = 'flex';
   },
 
   _build() {
-    // Her seferinde yeni Recognition objesi — Android'de eski obje takılıyor
     this.rec = new this.SR();
     this.rec.lang = 'tr-TR';
-    this.rec.continuous = false;      // ← Android'de continuous güvenilmez
+    this.rec.continuous = false;
     this.rec.interimResults = true;
     this.rec.maxAlternatives = 1;
 
     this.rec.onstart = () => {
       this.running = true;
-      this.setMicState('active');
-      this.setStatus('🔴 Dinliyorum...');
+      const state = this.mode === 'always-on' ? 'always-on' : 'active';
+      this.setMicState(state);
+      this.setStatus(this.mode === 'always-on' ? '🔴 Sürekli Dinliyorum...' : '🔴 Dinliyorum...');
       document.getElementById('transcript-preview').style.display = 'block';
     };
 
@@ -1582,7 +1805,6 @@ const voiceCtrl = {
       const heard = (final || interim).trim();
       if (!heard) return;
 
-      // Birikimli transcript — boşluk ekleyerek birleştir
       if (final) {
         this.accumulated = (this.accumulated + ' ' + final).trim();
       }
@@ -1591,7 +1813,6 @@ const voiceCtrl = {
       document.getElementById('transcript-preview').textContent = display;
       document.getElementById('question-input').value = this.accumulated || interim;
 
-      // Her yeni kelimede sessizlik sayacını sıfırla
       this._resetSilenceTimer();
     };
 
@@ -1602,18 +1823,16 @@ const voiceCtrl = {
         this.stop(); return;
       }
       if (e.error === 'no-speech') {
-        // Sessizlik algılandı — timer zaten sayıyor, restart et
         if (this.active) this._restart();
         return;
       }
-      if (e.error === 'aborted') return; // biz durdurduk
+      if (e.error === 'aborted') return;
       console.warn('SR error:', e.error);
       if (this.active) this._restart();
     };
 
     this.rec.onend = () => {
       this.running = false;
-      // Aktifse ve gönderme beklemiyorsa hemen yeni session aç
       if (this.active && !gameState.isWaiting) {
         setTimeout(() => this._restart(), 100);
       }
@@ -1622,7 +1841,7 @@ const voiceCtrl = {
 
   _restart() {
     if (!this.active || this.running || gameState.isWaiting) return;
-    this._build(); // taze obje
+    this._build();
     try { this.rec.start(); } catch(e) { console.warn(e); }
   },
 
@@ -1636,27 +1855,33 @@ const voiceCtrl = {
               document.getElementById('question-input').value.trim();
     if (!q || gameState.isWaiting) return;
 
-    // Durdur, gönder
-    this.active = false;
     clearTimeout(this.silenceTimer);
+    const wasAlwaysOn = this.mode === 'always-on';
+
+    // Stop current recognition session
+    this.running = false;
     try { this.rec.stop(); } catch(e) {}
+
+    if (!wasAlwaysOn) {
+      // One-shot: go fully inactive
+      this.active = false;
+      this.mode = 'off';
+    }
+    // Always-on: keep active=true, mic will resume after answer
+
     this.setMicState('waiting');
     this.setStatus('⏳ Gönderiliyor...');
     document.getElementById('transcript-preview').style.display = 'none';
 
+    const textToSend = this.accumulated;
     this.accumulated = '';
-    document.getElementById('question-input').value = q;
+    document.getElementById('question-input').value = textToSend;
     askQuestion();
 
-    // askQuestion bittikten sonra resumeAfterAnswer() zaten çağrılacak
-    this.setMicState('idle');
-    this.setStatus('');
-  },
-
-  toggle() {
-    if (!this.supported) return;
-    if (this.active) this.stop();
-    else this.start();
+    if (!wasAlwaysOn) {
+      this.setMicState('idle');
+      this.setStatus('');
+    }
   },
 
   start() {
@@ -1668,21 +1893,24 @@ const voiceCtrl = {
     document.getElementById('transcript-preview').textContent = '';
     document.getElementById('transcript-preview').style.display = 'block';
     this._restart();
+    this._updateSubLabel();
   },
 
   stop() {
     this.active = false;
     this.running = false;
+    this.mode = 'off';
     clearTimeout(this.silenceTimer);
     try { this.rec.stop(); } catch(e) {}
     this.accumulated = '';
     this.setMicState('idle');
     this.setStatus('');
     document.getElementById('transcript-preview').style.display = 'none';
+    this._updateSubLabel();
   },
 
   resumeAfterAnswer() {
-    if (!this.supported) return;
+    if (!this.supported || this.mode === 'off') return;
     // TTS bittikten sonra yeniden aç
     const check = () => {
       if (tts.synth && tts.synth.speaking) {
@@ -1697,19 +1925,34 @@ const voiceCtrl = {
   setMicState(state) {
     const btn = document.getElementById('mic-btn');
     if (!btn) return;
-    // Sınıfları temizle
-    btn.classList.remove('mic-idle','mic-ready','mic-active','mic-waiting');
+    btn.classList.remove('mic-idle','mic-ready','mic-active','mic-waiting','mic-always-on');
     btn.classList.add('mic-' + state);
-    const icons = { idle:'🎤', ready:'🎤', active:'🔴', waiting:'⏳' };
-    const labels = {
-      idle:    'Mikrofona bas, soruyu söyle',
-      ready:   'Hazır...',
-      active:  'Dinliyorum — 2sn sessizlik → gönder',
-      waiting: 'Gönderiliyor...',
-    };
+    const icons = { idle:'🎤', ready:'🎤', active:'🔴', 'always-on':'🔴', waiting:'⏳' };
     btn.textContent = icons[state] || '🎤';
+
     const lbl = document.getElementById('mic-label');
-    if (lbl) lbl.textContent = labels[state] || '';
+    if (lbl) {
+      const labels = {
+        idle:        'Tek tık: bir cümle  ·  Çift tık: sürekli mod',
+        ready:       'Hazır...',
+        active:      'Dinliyorum — 2sn sessizlik → gönder',
+        'always-on': '🔴 Sürekli Dinleme  ·  Tıkla: kapat',
+        waiting:     'Gönderiliyor...',
+      };
+      lbl.textContent = labels[state] || '';
+    }
+  },
+
+  _updateSubLabel() {
+    const sub = document.getElementById('mic-sublabel');
+    if (!sub) return;
+    if (this.mode === 'always-on') {
+      sub.textContent = '🔴 Always-On — cevap sonrası otomatik devam';
+      sub.style.color = 'var(--red-bright)';
+    } else {
+      sub.textContent = 'Tek tık: bir soru  ·  Çift tık: sürekli mod';
+      sub.style.color = 'var(--text-muted)';
+    }
   },
 
   setStatus(msg) {
