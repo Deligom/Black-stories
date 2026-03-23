@@ -359,73 +359,54 @@
       <div class="text-xs mt-1" style="color: var(--text-muted);">Google Generative AI · Gerçek zamanlı hakemllik</div>
     </div>
 
-    <!-- TTS Settings -->
-    <div class="mb-5">
-      <label class="text-xs tracking-widest mb-2 block" style="color: var(--text-muted);">SES MODU</label>
-      <div class="grid grid-cols-2 gap-2">
-        <button id="voice-aoede" onclick="tts.setVoice('Aoede')"
-          class="btn-ghost px-3 py-2 rounded text-xs text-left">
-          <div class="font-display" style="color:var(--accent);">Aoede</div>
-          <div style="color:var(--text-muted);font-size:10px;">Doğal · Kadın</div>
-        </button>
-        <button id="voice-charon" onclick="tts.setVoice('Charon')"
-          class="btn-ghost px-3 py-2 rounded text-xs text-left">
-          <div class="font-display" style="color:var(--accent);">Charon</div>
-          <div style="color:var(--text-muted);font-size:10px;">Derin · Erkek</div>
-        </button>
-        <button id="voice-kore" onclick="tts.setVoice('Kore')"
-          class="btn-ghost px-3 py-2 rounded text-xs text-left">
-          <div class="font-display" style="color:var(--accent);">Kore</div>
-          <div style="color:var(--text-muted);font-size:10px;">Sert · Kadın</div>
-        </button>
-        <button id="voice-fenrir" onclick="tts.setVoice('Fenrir')"
-          class="btn-ghost px-3 py-2 rounded text-xs text-left">
-          <div class="font-display" style="color:var(--accent);">Fenrir</div>
-          <div style="color:var(--text-muted);font-size:10px;">Gizemli · Erkek</div>
-        </button>
+    <!-- TTS Settings — VoiceRSS -->
+    <div class="mb-4">
+      <label class="text-xs tracking-widest mb-2 block" style="color: var(--text-muted);">SES · VOICERSS TTS</label>
+      <div class="mb-2">
+        <label class="text-xs tracking-widest mb-1 block" style="color: var(--text-muted);">VOICERSS API KEY</label>
+        <div class="flex gap-2">
+          <input id="settings-vrss-key" type="password"
+            class="question-input flex-1 px-3 py-2 text-sm rounded"
+            placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false"/>
+          <button onclick="toggleVrssKeyVisibility()" class="btn-ghost px-3 py-2 rounded text-xs" id="eye-vrss-btn">👁</button>
+        </div>
+        <div class="mt-1 text-xs" style="color: var(--text-muted);">
+          <a href="https://www.voicerss.org/registration.aspx" target="_blank" style="color:var(--accent-dim);">voicerss.org/registration.aspx</a> — e-posta ile ücretsiz kayıt, günde 350 istek.
+        </div>
       </div>
-      <div class="mt-2 text-xs" style="color: var(--text-muted);">Gemini API anahtarı gerektirir. Yoksa tarayıcı sesi kullanılır.</div>
-      <button onclick="tts.testAndReport()" class="btn-ghost w-full mt-3 px-3 py-2 rounded text-xs tracking-wide">
-        🔬 SES API'Sİ TEST ET
+      <button onclick="saveVrssKey()" class="btn-primary w-full px-3 py-2 rounded text-xs tracking-wide mb-2">
+        KAYDET & SES TEST ET
       </button>
-      <div id="tts-test-result" class="mt-2 text-xs px-3 py-2 rounded" style="display:none; background:var(--surface2); border:1px solid var(--border); color:var(--text-secondary); word-break:break-all; line-height:1.6;"></div>
+      <div id="tts-test-result" class="mt-1 text-xs px-3 py-2 rounded" style="display:none; background:var(--surface2); border:1px solid var(--border); color:var(--text-secondary); word-break:break-all; line-height:1.6;"></div>
+      <div class="mt-1 text-xs" style="color: var(--text-muted);">Key yoksa Android tarayıcı sesi kullanılır.</div>
     </div>
 
     <hr class="deco-line my-4">
 
-    <!-- API Key input -->
+    <!-- Gemini API Key -->
     <div class="mb-4">
-      <label class="text-xs tracking-widest mb-2 block" style="color: var(--text-muted);">GOOGLE AI API ANAHTARI</label>
+      <label class="text-xs tracking-widest mb-2 block" style="color: var(--text-muted);">GOOGLE AI API ANAHTARI <span style="font-weight:normal;">(Soru hakemliği)</span></label>
       <div class="flex gap-2">
-        <input
-          id="settings-apikey"
-          type="password"
+        <input id="settings-apikey" type="password"
           class="question-input flex-1 px-3 py-2 text-sm rounded"
-          placeholder="AIza..."
-          autocomplete="off"
-          spellcheck="false"
-        />
+          placeholder="AIza..." autocomplete="off" spellcheck="false"/>
         <button onclick="toggleApiKeyVisibility()" class="btn-ghost px-3 py-2 rounded text-xs" id="eye-btn">👁</button>
       </div>
-      <div class="mt-2 text-xs" style="color: var(--text-muted);">
-        <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--accent-dim);">aistudio.google.com/apikey</a> adresinden ücretsiz al.
+      <div class="mt-1 text-xs" style="color: var(--text-muted);">
+        <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--accent-dim);">aistudio.google.com/apikey</a> — ücretsiz.
       </div>
     </div>
 
-    <!-- Status indicator -->
-    <div id="api-status" class="mb-5 text-xs px-3 py-2 rounded" style="display:none; background: var(--surface2); border: 1px solid var(--border);"></div>
+    <div id="api-status" class="mb-4 text-xs px-3 py-2 rounded" style="display:none; background: var(--surface2); border: 1px solid var(--border);"></div>
 
-    <!-- Save button -->
     <button class="btn-primary w-full px-4 py-3 rounded text-sm tracking-wide" onclick="saveApiKey()">
       KAYDET & BAĞLANTI TEST ET
     </button>
 
-    <hr class="deco-line my-5">
+    <hr class="deco-line my-4">
 
-    <!-- Fallback info -->
     <div class="text-xs" style="color: var(--text-muted); line-height: 1.7;">
-      API anahtarı yoksa <span style="color: var(--text-secondary);">kelime eşleşme sistemi</span> devreye girer.
-      Gemini ile her sorun hikaye bağlamında gerçekten analiz edilir.
+      Gemini anahtarı yoksa <span style="color: var(--text-secondary);">kelime eşleşme sistemi</span> devreye girer.
     </div>
   </div>
 </div>
@@ -903,11 +884,12 @@ function getApiKey() {
 }
 
 function openSettings() {
-  const key = getApiKey();
-  document.getElementById('settings-apikey').value = key;
+  document.getElementById('settings-apikey').value = getApiKey();
   document.getElementById('api-status').style.display = 'none';
+  document.getElementById('settings-vrss-key').value = localStorage.getItem('bs_vrss_key') || '';
+  const el = document.getElementById('tts-test-result');
+  if (el) el.style.display = 'none';
   document.getElementById('modal-settings').style.display = 'flex';
-  tts.updateVoiceButtons();
 }
 
 function closeSettings() {
@@ -917,13 +899,22 @@ function closeSettings() {
 function toggleApiKeyVisibility() {
   const inp = document.getElementById('settings-apikey');
   const btn = document.getElementById('eye-btn');
-  if (inp.type === 'password') {
-    inp.type = 'text';
-    btn.textContent = '🙈';
-  } else {
-    inp.type = 'password';
-    btn.textContent = '👁';
-  }
+  inp.type = (inp.type === 'password') ? 'text' : 'password';
+  btn.textContent = (inp.type === 'password') ? '👁' : '🙈';
+}
+
+function toggleVrssKeyVisibility() {
+  const inp = document.getElementById('settings-vrss-key');
+  const btn = document.getElementById('eye-vrss-btn');
+  inp.type = (inp.type === 'password') ? 'text' : 'password';
+  btn.textContent = (inp.type === 'password') ? '👁' : '🙈';
+}
+
+function saveVrssKey() {
+  const key = document.getElementById('settings-vrss-key').value.trim();
+  if (key) localStorage.setItem('bs_vrss_key', key);
+  else localStorage.removeItem('bs_vrss_key');
+  tts.testAndReport();
 }
 
 async function saveApiKey() {
@@ -1660,7 +1651,7 @@ function showToast(msg) {
 }
 
 // ═══════════════════════════════════════════════
-// TEXT TO SPEECH — Gemini TTS + Fallback
+// TEXT TO SPEECH — VoiceRSS + Web Speech Fallback
 // ═══════════════════════════════════════════════
 const tts = {
   enabled: localStorage.getItem('bs_tts') !== 'false',
@@ -1669,22 +1660,15 @@ const tts = {
   audioCtx: null,
   currentSource: null,
   isPlaying: false,
-  _playId: 0,          // her speak() için unique ID — race condition önler
-  _abortCtrl: null,    // fetch iptal için AbortController
+  _playId: 0,
+  _abortCtrl: null,
 
-  TTS_MODEL: 'gemini-2.5-flash-preview-tts',
-  VOICE_NAME: 'Aoede',
-  lastTTSError: null,
+  _vrssKey() { return localStorage.getItem('bs_vrss_key') || ''; },
 
   init() {
-    const savedVoice = localStorage.getItem('bs_tts_voice');
-    if (savedVoice) this.VOICE_NAME = savedVoice;
-
     if (this.synth) {
       const loadVoices = () => {
         const voices = this.synth.getVoices();
-        // "Google Türkçe" = neural ağ sesi, localService=FALSE
-        // localService=TRUE = robotik yerel ses, kaçın
         this.voice =
           voices.find(v => v.lang.startsWith('tr') && v.name.toLowerCase().includes('google')) ||
           voices.find(v => v.lang === 'tr-TR' && !v.localService) ||
@@ -1696,7 +1680,6 @@ const tts = {
       this.synth.addEventListener('voiceschanged', loadVoices);
     }
     this.updateBtn();
-    setTimeout(() => this.updateVoiceButtons(), 100);
   },
 
   _getAudioCtx() {
@@ -1707,111 +1690,74 @@ const tts = {
     return this.audioCtx;
   },
 
-  async _playPCM(base64Data, playId) {
-    // Oynatmadan önce hâlâ biz miyiz kontrol et
+  async _playArrayBuffer(arrayBuffer, playId) {
     if (this._playId !== playId) return;
     return new Promise((resolve) => {
       try {
         const ctx = this._getAudioCtx();
-        const raw = atob(base64Data);
-        const bytes = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-        const samples = bytes.length / 2;
-        const audioBuffer = ctx.createBuffer(1, samples, 24000);
-        const channel = audioBuffer.getChannelData(0);
-        const dv = new DataView(bytes.buffer);
-        for (let i = 0; i < samples; i++) {
-          channel[i] = dv.getInt16(i * 2, true) / 32768;
-        }
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(ctx.destination);
-        this.currentSource = source;
-        source.onended = resolve;
-        source.start(0);
-      } catch(e) {
-        console.warn('PCM decode error', e);
-        resolve();
-      }
+        ctx.decodeAudioData(arrayBuffer.slice(0), (decoded) => {
+          if (this._playId !== playId) { resolve(); return; }
+          const src = ctx.createBufferSource();
+          src.buffer = decoded;
+          src.connect(ctx.destination);
+          this.currentSource = src;
+          src.onended = resolve;
+          src.start(0);
+        }, (e) => { console.warn('decode error', e); resolve(); });
+      } catch(e) { console.warn('AudioCtx error', e); resolve(); }
     });
   },
 
-  async _geminiTTS(text, playId) {
-    const apiKey = getApiKey();
-    if (!apiKey) return false;
-
-    // Her yeni istek için yeni AbortController
+  // ── VoiceRSS Neural TTS ──
+  async _vrssTTS(text, playId) {
+    const key = this._vrssKey();
+    if (!key) return false;
     this._abortCtrl = new AbortController();
-
+    const params = new URLSearchParams({
+      key, hl: 'tr-tr', src: text, c: 'MP3', f: '16khz_16bit_mono', ssml: 'false', b64: 'false'
+    });
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.TTS_MODEL}:generateContent?key=${apiKey}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        signal: this._abortCtrl.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `Türkçe olarak söyle: ${text}` }] }],
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: this.VOICE_NAME }
-              }
-            }
-          }
-        })
+      const res = await fetch('https://api.voicerss.org/?' + params.toString(), {
+        signal: this._abortCtrl.signal
       });
-
-      // Fetch tamamlandı ama biz iptal edildik mi?
       if (this._playId !== playId) return false;
-
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        const msg = err?.error?.message || `HTTP ${res.status}`;
-        console.warn('Gemini TTS error:', res.status, msg);
-        this.lastTTSError = `${res.status}: ${msg}`;
-        // Rate limit veya billing hatası ise kullanıcıya bildir
-        if (res.status === 429) {
-          showToast('🔇 Gemini TTS: Kota aşıldı (429) → cihaz sesine geçildi');
-        } else if (res.status === 400 || res.status === 403) {
-          showToast(`🔇 Gemini TTS hata ${res.status} → cihaz sesine geçildi`);
+        console.warn('VoiceRSS HTTP error:', res.status);
+        return false;
+      }
+      // VoiceRSS hata durumunda "ERROR: ..." şeklinde text döner
+      const contentType = res.headers.get('Content-Type') || '';
+      if (contentType.includes('text')) {
+        const msg = await res.text();
+        console.warn('VoiceRSS error:', msg);
+        if (msg.includes('ERROR')) {
+          showToast('🔇 VoiceRSS: ' + msg.replace('ERROR: ','').slice(0,40) + ' → cihaz sesi');
+          return false;
         }
-        return false;
       }
-      const data = await res.json();
+      const buf = await res.arrayBuffer();
       if (this._playId !== playId) return false;
-
-      const inlineData = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-      if (!inlineData?.data) {
-        const snippet = JSON.stringify(data).slice(0, 200);
-        console.warn('Gemini TTS: ses verisi boş — fallback. Yanıt:', snippet);
-        this.lastTTSError = `Ses verisi boş: ${snippet}`;
-        showToast('🔇 Gemini TTS ses verisi yok → cihaz sesine geçildi');
-        return false;
-      }
-
-      console.log('Gemini TTS OK — voice:', this.VOICE_NAME, '| mime:', inlineData.mimeType);
-      await this._playPCM(inlineData.data, playId);
+      await this._playArrayBuffer(buf, playId);
       return true;
-
     } catch(e) {
-      if (e.name === 'AbortError') return false; // biz iptal ettik, normal
-      console.warn('Gemini TTS fetch error:', e.message);
+      if (e.name === 'AbortError') return false;
+      console.warn('VoiceRSS fetch error:', e.message);
       return false;
     }
   },
 
+  // ── Web Speech Fallback ──
   _webSpeech(text, playId) {
     return new Promise((resolve) => {
       if (!this.synth || this._playId !== playId) { resolve(); return; }
       this.synth.cancel();
       const utt = new SpeechSynthesisUtterance(text);
-      utt.lang = 'tr-TR';
-      utt.rate = 0.88;
-      utt.pitch = 0.9;
-      utt.volume = 1;
+      utt.lang    = 'tr-TR';
+      utt.rate    = 0.88;
+      utt.pitch   = 0.9;
+      utt.volume  = 1;
       if (this.voice) utt.voice = this.voice;
-      utt.onend = resolve;
+      utt.onend   = resolve;
       utt.onerror = resolve;
       this.synth.speak(utt);
     });
@@ -1822,116 +1768,61 @@ const tts = {
     const clean = text.replace(/[🔥❄️🌡🏆💀🖤🚫⚠️░▶✦★☠✅🔒💡]/gu, '')
                       .replace(/\s+/g, ' ').trim();
     if (!clean) return;
-
-    // Önceki her şeyi durdur, yeni ID al
     this.stop();
     const myId = ++this._playId;
     this.isPlaying = true;
-
-    const ok = await this._geminiTTS(clean, myId);
-
-    // Hâlâ biz miyiz ve Gemini başarısız olduysa Web Speech dene
-    if (this._playId === myId && !ok) {
-      await this._webSpeech(clean, myId);
-    }
-
+    const ok = await this._vrssTTS(clean, myId);
+    if (this._playId === myId && !ok) await this._webSpeech(clean, myId);
     if (this._playId === myId) this.isPlaying = false;
   },
 
   stop() {
-    // playId artır → devam eden tüm async'ler kendi check'lerinde kendini keser
     this._playId++;
     this.isPlaying = false;
-    // Fetch'i iptal et
     if (this._abortCtrl) { this._abortCtrl.abort(); this._abortCtrl = null; }
-    // AudioContext source'u durdur
-    if (this.currentSource) {
-      try { this.currentSource.stop(); } catch(e) {}
-      this.currentSource = null;
-    }
+    if (this.currentSource) { try { this.currentSource.stop(); } catch(e) {} this.currentSource = null; }
     if (this.synth) this.synth.cancel();
   },
 
-  isSpeaking() {
-    return this.isPlaying || (!!this.synth && this.synth.speaking);
-  },
+  isSpeaking() { return this.isPlaying || (!!this.synth && this.synth.speaking); },
 
-  setVoice(name) {
-    this.stop();
-    this.VOICE_NAME = name;
-    localStorage.setItem('bs_tts_voice', name);
-    this.updateVoiceButtons();
-    this.speak('Hazırım.');
-  },
-
+  // Ayarlar → "KAYDET & SES TEST ET"
   async testAndReport() {
     const el = document.getElementById('tts-test-result');
     if (!el) return;
     el.style.display = 'block';
-    el.textContent = '⏳ Test ediliyor...';
-    el.style.color = 'var(--text-secondary)';
-
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      el.textContent = '❌ API anahtarı girilmemiş. Lütfen önce kaydedin.';
+    el.style.color   = 'var(--text-secondary)';
+    el.textContent   = '⏳ Test ediliyor...';
+    const key = this._vrssKey();
+    if (!key) {
+      el.innerHTML   = '❌ VoiceRSS key girilmemiş.<br><span style="color:var(--accent)">→ voicerss.org/registration.aspx — e-posta yeterli</span>';
       el.style.color = 'var(--red-bright)';
       return;
     }
-
+    const params = new URLSearchParams({ key, hl: 'tr-tr', src: 'Merhaba, ses testi başarılı.', c: 'MP3', f: '16khz_16bit_mono' });
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.TTS_MODEL}:generateContent?key=${apiKey}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: 'Merhaba.' }] }],
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: this.VOICE_NAME } } }
-          }
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        const msg = data?.error?.message || 'Bilinmeyen hata';
-        const code = res.status;
-        let diagnosis = '';
-        if (code === 429) diagnosis = '→ Kota aşıldı! Free tier günlük/dakika limiti dolmuş. Yarın tekrar dene veya billing aç.';
-        else if (code === 400) diagnosis = '→ Billing kapalı olabilir veya TTS bu hesapta aktif değil.';
-        else if (code === 403) diagnosis = '→ API anahtarının TTS iznin yok veya hesap kısıtlı.';
-        else if (code === 404) diagnosis = '→ Model adı geçersiz veya bu bölgede erişilemiyor.';
-        el.innerHTML = `❌ HTTP ${code}<br><span style="color:var(--red-bright)">${msg}</span><br><br><span style="color:var(--accent)">${diagnosis}</span>`;
+      const res = await fetch('https://api.voicerss.org/?' + params.toString());
+      const contentType = res.headers.get('Content-Type') || '';
+      if (contentType.includes('text') || !res.ok) {
+        const msg = await res.text();
+        let hint = '';
+        if (msg.includes('Invalid API key')) hint = '→ Key yanlış.';
+        else if (msg.includes('request limit')) hint = '→ Günlük 350 istek limiti dolmuş.';
+        el.innerHTML   = `❌ VoiceRSS: <span style="color:var(--red-bright)">${msg.slice(0,80)}</span><br><span style="color:var(--accent)">${hint}</span>`;
         el.style.color = 'var(--text-secondary)';
       } else {
-        const hasAudio = !!data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (hasAudio) {
-          el.textContent = `✅ Gemini TTS çalışıyor! Model: ${this.TTS_MODEL} | Ses: ${this.VOICE_NAME}`;
-          el.style.color = 'var(--green-bright)';
-          this.speak('Merhaba, ses testi başarılı.');
-        } else {
-          el.innerHTML = `⚠️ API yanıt verdi ama ses verisi yok.<br><span style="color:var(--accent-dim);">${JSON.stringify(data).slice(0,200)}</span>`;
-          el.style.color = 'var(--text-secondary)';
-        }
+        const buf = await res.arrayBuffer();
+        el.textContent = '✅ VoiceRSS çalışıyor! Türkçe neural ses aktif.';
+        el.style.color = 'var(--green-bright)';
+        const myId = ++this._playId;
+        this.isPlaying = true;
+        await this._playArrayBuffer(buf, myId);
+        if (this._playId === myId) this.isPlaying = false;
       }
     } catch(e) {
-      el.textContent = `❌ Fetch hatası: ${e.message}`;
+      el.textContent = '❌ Bağlantı hatası: ' + e.message;
       el.style.color = 'var(--red-bright)';
     }
-  },
-
-  updateVoiceButtons() {
-    ['Aoede','Charon','Kore','Fenrir'].forEach(v => {
-      const btn = document.getElementById('voice-' + v.toLowerCase());
-      if (!btn) return;
-      if (v === this.VOICE_NAME) {
-        btn.style.borderColor = 'var(--accent)';
-        btn.style.background = 'rgba(200,169,110,0.08)';
-      } else {
-        btn.style.borderColor = '';
-        btn.style.background = '';
-      }
-    });
   },
 
   toggle() {
@@ -1945,8 +1836,8 @@ const tts = {
   updateBtn() {
     const btn = document.getElementById('tts-btn');
     if (!btn) return;
-    btn.textContent = this.enabled ? '🔊' : '🔇';
-    btn.title = this.enabled ? 'Sesi kapat' : 'Sesi aç';
+    btn.textContent   = this.enabled ? '🔊' : '🔇';
+    btn.title         = this.enabled ? 'Sesi kapat' : 'Sesi aç';
     btn.style.opacity = this.enabled ? '1' : '0.4';
   }
 };
